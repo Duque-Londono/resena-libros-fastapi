@@ -14,6 +14,7 @@ Luego abre la documentación interactiva (Swagger) en:
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.routers import auth
 
 # La instancia `app` es lo que uvicorn ejecuta (app.main:app).
 # title/version alimentan la página /docs, para que la profesora pueda probar
@@ -40,5 +41,9 @@ def raiz() -> dict[str, str]:
     }
 
 
-# NOTA: Los routers de auth, catálogo (works), reseñas y listas de lectura se
-# incluirán aquí en las siguientes fases con app.include_router(...).
+# --- Routers ---
+# Fase 3: autenticación (registro, login, perfil).
+app.include_router(auth.router)
+
+# NOTA: Los routers de catálogo (works), reseñas y listas de lectura se incluirán
+# aquí en las siguientes fases.

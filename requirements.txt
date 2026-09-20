@@ -16,6 +16,7 @@ uvicorn[standard]==0.53.0     # Servidor ASGI para levantar la app en desarrollo
 # --- Validación y configuración (Pydantic v2) ---
 pydantic==2.13.5              # Modelos de validación (schemas de entrada/salida)
 pydantic-settings==2.15.0     # Carga la configuración desde variables de entorno / .env
+email-validator==2.3.0        # Backend de EmailStr (valida el formato de los correos)
 
 # --- Base de datos (SQLAlchemy 2.0 + migraciones) ---
 sqlalchemy==2.0.54            # ORM síncrono (modelos <-> tablas)
