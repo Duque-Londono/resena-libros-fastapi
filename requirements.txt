@@ -1,0 +1,29 @@
+# =============================================================================
+# Dependencias del proyecto — VERSIONES FIJAS Y EXACTAS
+# -----------------------------------------------------------------------------
+# Se fijan versiones exactas (==) para que el proyecto sea reproducible: en la
+# sustentación, en tu máquina y en la de la profesora se instala EXACTAMENTE lo
+# mismo, sin sorpresas por actualizaciones. Estas versiones fueron verificadas
+# funcionando sobre Python 3.14.
+#
+# Para instalar:  pip install -r requirements.txt
+# =============================================================================
+
+# --- Núcleo de la API ---
+fastapi==0.141.1              # Framework web (define endpoints, valida, genera /docs)
+uvicorn[standard]==0.53.0     # Servidor ASGI para levantar la app en desarrollo
+
+# --- Validación y configuración (Pydantic v2) ---
+pydantic==2.13.5              # Modelos de validación (schemas de entrada/salida)
+pydantic-settings==2.15.0     # Carga la configuración desde variables de entorno / .env
+
+# --- Base de datos (SQLAlchemy 2.0 + migraciones) ---
+sqlalchemy==2.0.54            # ORM síncrono (modelos <-> tablas)
+alembic==1.20.0               # Migraciones de esquema (vía oficial para crear/actualizar tablas)
+
+# --- Seguridad (se usa a fondo en la Fase 3: auth) ---
+# NOTA: usamos PyJWT (no python-jose, que arrastra el CVE-2024-33663) y
+#       pwdlib con Argon2 (no passlib, sin mantenimiento y roto con bcrypt 4.x).
+pyjwt==2.14.0                 # Crear y verificar tokens JWT
+pwdlib[argon2]==0.3.1         # Hash de contraseñas con Argon2 (backend argon2-cffi)
+python-multipart==0.0.32      # Necesario para el formulario de login (OAuth2 password flow)
