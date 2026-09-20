@@ -12,6 +12,7 @@ base de datos", el único archivo que se toca (o su .env) es este.
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,6 +39,29 @@ class Settings(BaseSettings):
     # --- Aplicación ---
     PROJECT_NAME: str = "API Reseñas de Libros y Películas"
     DEBUG: bool = True
+
+    # --- CORS ---
+    # Orígenes (dominios) del frontend a los que se permite llamar a esta API
+    # desde el navegador. NO van quemados en el código: se leen del .env para
+    # poder cambiarlos sin tocar Python. Por defecto, los puertos típicos de
+    # desarrollo de Vite (5173) y Create React App / Next (3000).
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def _parsear_origenes(cls, valor: object) -> object:
+        """Permite escribir la lista en .env separada por comas.
+
+        Por defecto pydantic-settings esperaría un JSON (["...","..."]) para una
+        lista. Este validador acepta también el formato cómodo separado por comas
+        (BACKEND_CORS_ORIGINS=http://a.com,http://b.com) y lo convierte en lista.
+        """
+        if isinstance(valor, str) and not valor.startswith("["):
+            return [origen.strip() for origen in valor.split(",") if origen.strip()]
+        return valor
 
     # Le indica a Pydantic que lea el archivo .env; ignora variables extra que
     # no estén declaradas aquí (evita errores por variables del sistema ajenas).
