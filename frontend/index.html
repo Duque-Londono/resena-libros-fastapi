@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reseñas de Libros y Películas — Demo</title>
+
+  <!--
+    ============================================================================
+    FRONTEND DE DEMOSTRACIÓN (un solo archivo: HTML + CSS + JS vanilla)
+    ============================================================================
+    Objetivo: enseñar visualmente los 4 pilares de la API durante la sustentación.
+      1) Autenticación (login con JWT, perfil, cerrar sesión)
+      2) Catálogo de obras (listado público + filtros)
+      3) Reseñas (ver y crear, con manejo de 409 y 422)
+      4) Favoritos / lista de lectura
+    (+) Extra: si el usuario es admin, formulario para crear obras.
+
+    No usa React/Vue ni ningún framework. Todo es JavaScript "de toda la vida"
+    (fetch, DOM). Está pensado para leerse y explicarse entero.
+    ============================================================================
+  -->
+
+  <style>
+    /* ----------------------------------------------------------------------
+       PALETA Y VARIABLES
+       Colores neutros (grises + blanco) con un acento sobrio (azul apagado).
+       Definir todo en variables permite cambiar el aspecto en un solo sitio.
+       ---------------------------------------------------------------------- */
+    :root {
+      --fondo: #f4f5f7;
+      --superficie: #ffffff;
+      --borde: #e2e5ea;
+      --texto: #1f2430;
+      --texto-suave: #6b7280;
+      --acento: #3b5b7a;        /* azul apagado, discreto */
+      --acento-claro: #eef2f6;
+      --exito: #2f7d5b;
+      --error: #b23b3b;
+      --aviso: #9a6b1e;
+      --radio: 10px;
+      --sombra: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      /* Tipografía limpia del sistema: se ve nativa en cada equipo. */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--fondo);
+      color: var(--texto);
+      line-height: 1.5;
+    }
+
+    /* Barra superior con el título y (si hay sesión) los datos del usuario. */
+    header.barra {
+      background: var(--superficie);
+      border-bottom: 1px solid var(--borde);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    header.barra h1 { font-size: 1.05rem; margin: 0; font-weight: 600; letter-spacing: .2px; }
+    .usuario-info { display: flex; align-items: center; gap: 12px; font-size: .9rem; }
+    .usuario-info .rol {
+      background: var(--acento-claro);
+      color: var(--acento);
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+
+    main { max-width: 960px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    /* Tarjetas: contenedor visual con borde suave y sombra ligera. */
+    .tarjeta {
+      background: var(--superficie);
+      border: 1px solid var(--borde);
+      border-radius: var(--radio);
+      box-shadow: var(--sombra);
+      padding: 20px;
+    }
+
+    h2 { font-size: 1.15rem; margin: 0 0 16px; font-weight: 600; }
+    h3 { font-size: 1rem; margin: 0 0 8px; font-weight: 600; }
+
+    label { display: block; font-size: .85rem; color: var(--texto-suave); margin-bottom: 6px; font-weight: 500; }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      font-size: .95rem;
+      font-family: inherit;
+      background: #fff;
+      color: var(--texto);
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--acento);
+      box-shadow: 0 0 0 3px rgba(59, 91, 122, 0.12);
+    }
+    textarea { resize: vertical; min-height: 70px; }
+
+    .campo { margin-bottom: 14px; }
+
+    button {
+      background: var(--acento);
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: .92rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s ease, opacity .15s ease;
+    }
+    button:hover { background: #32506c; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    button.secundario {
+      background: transparent;
+      color: var(--acento);
+      border: 1px solid var(--borde);
+    }
+    button.secundario:hover { background: var(--acento-claro); }
+    button.pequeno { padding: 6px 12px; font-size: .82rem; }
+
+    /* Rejilla de tarjetas del catálogo, responsive. */
+    .rejilla {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .obra {
+      border: 1px solid var(--borde);
+      border-radius: var(--radio);
+      padding: 16px;
+      background: var(--superficie);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      cursor: pointer;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .obra:hover { border-color: var(--acento); box-shadow: var(--sombra); }
+    .obra .titulo { font-weight: 600; font-size: .98rem; }
+    .obra .meta { font-size: .8rem; color: var(--texto-suave); }
+    .etiqueta {
+      display: inline-block;
+      background: var(--acento-claro);
+      color: var(--acento);
+      font-size: .72rem;
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-right: 4px;
+    }
+    .obra .acciones { margin-top: 10px; display: flex; gap: 8px; }
+
+    /* Reseñas dentro del detalle. */
+    .resena {
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      background: #fcfcfd;
+    }
+    .estrellas { color: #d0a537; letter-spacing: 1px; }
+    .resena .autor { font-size: .78rem; color: var(--texto-suave); margin-top: 4px; }
+
+    /* Área de mensajes (en vez de alert()). Cambia de color según el tipo. */
+    #mensaje {
+      display: none;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: .9rem;
+      border: 1px solid transparent;
+      /* "Pegajoso": si la página está desplazada hacia abajo (p. ej. mirando el
+         formulario de reseñas), el mensaje queda fijado arriba del viewport y
+         SIEMPRE es visible. Sin esto, el banner se pintaba fuera de pantalla y
+         parecía que el error (401/403/404/409/422) se tragaba en silencio. */
+      position: sticky;
+      top: 12px;
+      z-index: 20;
+    }
+    #mensaje.info    { display: block; background: #eef4fb; border-color: #cfe0f2; color: #2c4a6b; }
+    #mensaje.exito   { display: block; background: #eaf6ef; border-color: #c9e7d5; color: var(--exito); }
+    #mensaje.error   { display: block; background: #fbecec; border-color: #f0cccc; color: var(--error); }
+    #mensaje.aviso   { display: block; background: #fdf5e6; border-color: #f0e0bf; color: var(--aviso); }
+
+    .ayuda-demo {
+      font-size: .82rem;
+      color: var(--texto-suave);
+      background: var(--acento-claro);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 14px;
+    }
+    .ayuda-demo code { background: #fff; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--borde); }
+
+    .oculto { display: none !important; }
+    .fila { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .fila > div { flex: 1; min-width: 140px; }
+    .vacio { color: var(--texto-suave); font-size: .9rem; padding: 8px 0; }
+    .cargando { color: var(--texto-suave); font-size: .9rem; }
+    .seccion { margin-bottom: 22px; }
+    .login-caja { max-width: 420px; margin: 40px auto; }
+    .titulo-seccion { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .titulo-seccion h2 { margin: 0; }
+  </style>
+</head>
+
+<body>
+  <!-- Barra superior: título fijo + datos del usuario (solo con sesión). -->
+  <header class="barra">
+    <h1>📚 Reseñas de Libros y Películas</h1>
+    <div id="usuario-info" class="usuario-info oculto">
+      <span id="usuario-nombre"></span>
+      <span id="usuario-rol" class="rol"></span>
+      <button id="btn-logout" class="secundario pequeno">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Área de mensajes: aquí se muestran errores y avisos (no usamos alert). -->
+    <div id="mensaje"></div>
+
+    <!-- ================= VISTA 1: LOGIN ================= -->
+    <section id="vista-login" class="login-caja">
+      <div class="tarjeta">
+        <h2>Iniciar sesión</h2>
+        <form id="form-login">
+          <div class="campo">
+            <label for="login-usuario">Email o nombre de usuario</label>
+            <input id="login-usuario" type="text" autocomplete="username" required />
+          </div>
+          <div class="campo">
+            <label for="login-password">Contraseña</label>
+            <input id="login-password" type="password" autocomplete="current-password" required />
+          </div>
+          <button type="submit" id="btn-login">Entrar</button>
+        </form>
+
+        <!-- Ayuda visible: credenciales de demostración. -->
+        <div class="ayuda-demo">
+          <strong>Credenciales de demo:</strong><br />
+          Admin: <code>admin@demo.com</code> / <code>admin12345</code><br />
+          Usuario: <code>ana@demo.com</code> / <code>ana123456</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VISTA 2: APLICACIÓN (con sesión) ================= -->
+    <section id="vista-app" class="oculto">
+
+      <!-- ---- Formulario de crear obra (SOLO admin) ---- -->
+      <div id="seccion-admin" class="seccion tarjeta oculto">
+        <h2>Crear obra nueva <span class="etiqueta">solo admin</span></h2>
+        <form id="form-obra">
+          <div class="fila">
+            <div>
+              <label for="obra-titulo">Título</label>
+              <input id="obra-titulo" type="text" required />
+            </div>
+            <div>
+              <label for="obra-anio">Año</label>
+              <input id="obra-anio" type="number" min="1450" placeholder="Ej. 1965" />
+            </div>
+          </div>
+          <div class="fila" style="margin-top:12px;">
+            <div>
+              <label for="obra-tipo">Tipo</label>
+              <select id="obra-tipo"></select>
+            </div>
+            <div>
+              <label for="obra-genero">Género</label>
+              <select id="obra-genero"></select>
+            </div>
+          </div>
+          <div class="campo" style="margin-top:12px;">
+            <label for="obra-desc">Descripción (opcional)</label>
+            <textarea id="obra-desc"></textarea>
+          </div>
+          <button type="submit">Crear obra</button>
+        </form>
+      </div>
+
+      <!-- ---- Catálogo con filtros ---- -->
+      <div class="seccion tarjeta">
+        <div class="titulo-seccion">
+          <h2>Catálogo</h2>
+          <button id="btn-ver-favoritos" class="secundario pequeno">★ Mi lista</button>
+        </div>
+
+        <div class="fila" style="margin-bottom:16px;">
+          <div>
+            <label for="filtro-tipo">Filtrar por tipo</label>
+            <select id="filtro-tipo"></select>
+          </div>
+          <div>
+            <label for="filtro-genero">Filtrar por género</label>
+            <select id="filtro-genero"></select>
+          </div>
+          <div style="flex:0;">
+            <button id="btn-filtrar" class="secundario">Aplicar</button>
+          </div>
+        </div>
+
+        <div id="catalogo" class="rejilla"></div>
+      </div>
+
+      <!-- ---- Detalle de una obra: reseñas + formulario ---- -->
+      <div id="seccion-detalle" class="seccion tarjeta oculto">
+        <div class="titulo-seccion">
+          <h2 id="detalle-titulo">Reseñas</h2>
+          <button id="btn-cerrar-detalle" class="secundario pequeno">Cerrar</button>
+        </div>
+
+        <div id="lista-resenas"></div>
+
+        <h3 style="margin-top:18px;">Escribir una reseña</h3>
+        <form id="form-resena">
+          <div class="fila">
+            <div style="flex:0; min-width:160px;">
+              <label for="resena-rating">Puntuación</label>
+              <select id="resena-rating">
+                <option value="5">★★★★★ (5)</option>
+                <option value="4">★★★★ (4)</option>
+                <option value="3">★★★ (3)</option>
+                <option value="2">★★ (2)</option>
+                <option value="1">★ (1)</option>
+              </select>
+            </div>
+          </div>
+          <div class="campo" style="margin-top:12px;">
+            <label for="resena-texto">Tu reseña</label>
+            <textarea id="resena-texto" placeholder="¿Qué te pareció?" required></textarea>
+          </div>
+          <button type="submit">Publicar reseña</button>
+        </form>
+      </div>
+
+      <!-- ---- Mi lista de lectura / favoritos ---- -->
+      <div id="seccion-favoritos" class="seccion tarjeta oculto">
+        <div class="titulo-seccion">
+          <h2>Mi lista de lectura</h2>
+          <button id="btn-cerrar-favoritos" class="secundario pequeno">Cerrar</button>
+        </div>
+        <div id="favoritos" class="rejilla"></div>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    /* ========================================================================
+       CONFIGURACIÓN
+       ------------------------------------------------------------------------
+       URL base de la API. Se deja como constante y comentada para poder
+       cambiarla fácilmente durante la sustentación (por ejemplo, si la API se
+       expone en otra IP/puerto).
+       ======================================================================== */
+    const API_URL = "http://127.0.0.1:8000";
+    // const API_URL = "http://localhost:8000";   // alternativa equivalente
+
+    /* ------------------------------------------------------------------------
+       ESTADO EN MEMORIA
+       ------------------------------------------------------------------------
+       El token JWT se guarda en una simple variable de JavaScript (en memoria),
+       NO en localStorage. Es lo más sencillo de explicar: al recargar la página
+       se pierde la sesión, que para una demo es aceptable y evita complejidad.
+       ------------------------------------------------------------------------ */
+    let token = null;          // el JWT que devuelve /auth/login
+    let usuarioActual = null;  // datos del usuario (de /auth/me)
+    let obraSeleccionada = null;
+
+    /* Traducciones de los Enum de la API a etiquetas legibles en español.
+       Las CLAVES deben coincidir EXACTAMENTE con los valores que usa la API. */
+    const TIPOS = { book: "Libro", movie: "Película" };
+    const GENEROS = {
+      fiction: "Ficción", non_fiction: "No ficción", fantasy: "Fantasía",
+      science_fiction: "Ciencia ficción", mystery: "Misterio", thriller: "Suspenso",
+      romance: "Romance", horror: "Terror", drama: "Drama", comedy: "Comedia",
+      documentary: "Documental", biography: "Biografía", poetry: "Poesía", other: "Otro",
+    };
+
+    /* ========================================================================
+       UTILIDADES DE INTERFAZ
+       ======================================================================== */
+
+    // Muestra un mensaje en el área dedicada (en lugar de usar alert()).
+    // tipo puede ser: "info" | "exito" | "error" | "aviso".
+    function mostrarMensaje(texto, tipo = "info") {
+      const caja = document.getElementById("mensaje");
+      caja.textContent = texto;
+      caja.className = tipo;      // aplica los estilos de color correspondientes
+      // Autolimpieza tras unos segundos para no acumular mensajes.
+      clearTimeout(mostrarMensaje._t);
+      mostrarMensaje._t = setTimeout(limpiarMensaje, 6000);
+    }
+    function limpiarMensaje() {
+      const caja = document.getElementById("mensaje");
+      caja.textContent = "";
+      caja.className = "";
+    }
+
+    // Pinta las estrellas de una puntuación (p. ej. 4 -> ★★★★☆).
+    function estrellas(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
+
+    // Rellena un <select> con opciones a partir de un objeto {valor: etiqueta}.
+    // Si conTodos=true, añade primero una opción "Todos" (valor vacío) para filtros.
+    function llenarSelect(id, mapa, conTodos = false) {
+      const sel = document.getElementById(id);
+      sel.innerHTML = "";
+      if (conTodos) {
+        const opt = document.createElement("option");
+        opt.value = ""; opt.textContent = "Todos";
+        sel.appendChild(opt);
+      }
+      for (const [valor, etiqueta] of Object.entries(mapa)) {
+        const opt = document.createElement("option");
+        opt.value = valor; opt.textContent = etiqueta;
+        sel.appendChild(opt);
+      }
+    }
+
+    /* ========================================================================
+       CAPA DE ACCESO A LA API (fetch)
+       ------------------------------------------------------------------------
+       apiFetch() centraliza TODAS las peticiones JSON (reseñas, obras, favoritos,
+       perfil). Se encarga de:
+         - Añadir la cabecera Authorization: Bearer <token> si hay sesión.
+         - Poner Content-Type: application/json cuando enviamos cuerpo.
+         - Traducir los códigos de error (401, 403, 404, 409, 422) a mensajes
+           claros que se lanzan como excepción para que el llamador los muestre.
+       OJO: el LOGIN NO usa esta función, porque ese endpoint espera
+       form-urlencoded (OAuth2), no JSON. Ver iniciarSesion() más abajo.
+       ======================================================================== */
+    async function apiFetch(ruta, opciones = {}) {
+      const cabeceras = opciones.headers || {};
+
+      // Si vamos a mandar un cuerpo (body), lo enviamos como JSON.
+      if (opciones.body !== undefined) {
+        cabeceras["Content-Type"] = "application/json";
+        opciones.body = JSON.stringify(opciones.body);
+      }
+
+      // Cada petición protegida lleva el token en la cabecera Authorization.
+      if (token) {
+        cabeceras["Authorization"] = "Bearer " + token;
+      }
+
+      opciones.headers = cabeceras;
+
+      const respuesta = await fetch(API_URL + ruta, opciones);
+
+      // 204 No Content (p. ej. borrar): no hay cuerpo que parsear.
+      if (respuesta.status === 204) return null;
+
+      // Intentamos leer el cuerpo como JSON (puede fallar si viene vacío).
+      let datos = null;
+      try { datos = await respuesta.json(); } catch (_) { /* sin cuerpo */ }
+
+      if (!respuesta.ok) {
+        // Construimos un mensaje según el código de estado HTTP y adjuntamos el
+        // propio código (error.status) para que quien lo capture pueda
+        // distinguir el caso (p. ej. tratar el 409 como aviso, no como error).
+        const error = new Error(traducirError(respuesta.status, datos));
+        error.status = respuesta.status;
+        throw error;
+      }
+      return datos;
+    }
+
+    // Traduce un código de error + el cuerpo de la API a un mensaje en español.
+    function traducirError(status, datos) {
+      // FastAPI suele mandar el detalle en datos.detail. En los 422 es una lista.
+      let detalle = datos && datos.detail;
+
+      if (status === 422 && Array.isArray(detalle)) {
+        // Error de validación: mostramos el primer problema de forma legible.
+        const primero = detalle[0];
+        const campo = primero.loc ? primero.loc[primero.loc.length - 1] : "dato";
+        return `Dato inválido (${campo}): ${primero.msg}`;
+      }
+      if (typeof detalle !== "string") {
+        detalle = null;
+      }
+
+      switch (status) {
+        case 401: return detalle || "Tu sesión no es válida. Vuelve a iniciar sesión.";
+        case 403: return detalle || "No tienes permiso para hacer esto.";
+        case 404: return detalle || "No se ha encontrado el recurso.";
+        case 409: return detalle || "Conflicto: la acción ya se había realizado.";
+        default:  return detalle || `Error inesperado (código ${status}).`;
+      }
+    }
+
+    /* ========================================================================
+       AUTENTICACIÓN
+       ======================================================================== */
+
+    // LOGIN: este endpoint sigue el estándar OAuth2, así que espera los datos
+    // como formulario (application/x-www-form-urlencoded), NO como JSON.
+    // Por eso:
+    //   - usamos URLSearchParams como body,
+    //   - y NO ponemos la cabecera Content-Type manualmente (fetch la pone sola
+    //     correctamente para URLSearchParams).
+    async function iniciarSesion(usuario, contrasena) {
+      const cuerpo = new URLSearchParams();
+      cuerpo.append("username", usuario);   // aquí "username" admite email o usuario
+      cuerpo.append("password", contrasena);
+
+      const respuesta = await fetch(API_URL + "/auth/login", {
+        method: "POST",
+        body: cuerpo,   // fetch enviará Content-Type: application/x-www-form-urlencoded
+      });
+
+      const datos = await respuesta.json().catch(() => null);
+
+      if (!respuesta.ok) {
+        // 401 = credenciales incorrectas (el mensaje viene de la API).
+        throw new Error(traducirError(respuesta.status, datos));
+      }
+
+      // La API responde { access_token, token_type }. Guardamos el token en la
+      // variable en memoria; a partir de ahora viaja en cada petición protegida.
+      token = datos.access_token;
+    }
+
+    // Tras el login, pedimos el perfil (GET /auth/me) para saber nombre y rol.
+    async function cargarPerfil() {
+      usuarioActual = await apiFetch("/auth/me");
+    }
+
+    // Cerrar sesión: simplemente olvidamos el token y el usuario, y volvemos al
+    // login. Al no usar localStorage, no hay nada más que borrar.
+    function cerrarSesion() {
+      token = null;
+      usuarioActual = null;
+      obraSeleccionada = null;
+      document.getElementById("usuario-info").classList.add("oculto");
+      document.getElementById("vista-app").classList.add("oculto");
+      document.getElementById("vista-login").classList.remove("oculto");
+      document.getElementById("form-login").reset();
+      limpiarMensaje();
+    }
+
+    // Muestra la vista principal ya autenticado y pinta los datos del usuario.
+    function mostrarApp() {
+      document.getElementById("vista-login").classList.add("oculto");
+      document.getElementById("vista-app").classList.remove("oculto");
+
+      document.getElementById("usuario-nombre").textContent = usuarioActual.username;
+      document.getElementById("usuario-rol").textContent = usuarioActual.role;
+      document.getElementById("usuario-info").classList.remove("oculto");
+
+      // El formulario de crear obra solo aparece si el usuario es admin.
+      const esAdmin = usuarioActual.role === "admin";
+      document.getElementById("seccion-admin").classList.toggle("oculto", !esAdmin);
+
+      cargarCatalogo();  // al entrar, mostramos el catálogo
+    }
+
+    /* ========================================================================
+       CATÁLOGO DE OBRAS
+       ======================================================================== */
+
+    // GET /works con filtros opcionales por tipo y género.
+    async function cargarCatalogo() {
+      const cont = document.getElementById("catalogo");
+      cont.innerHTML = '<p class="cargando">Cargando catálogo…</p>';
+
+      // Construimos la query string solo con los filtros que tengan valor.
+      const params = new URLSearchParams();
+      const tipo = document.getElementById("filtro-tipo").value;
+      const genero = document.getElementById("filtro-genero").value;
+      if (tipo) params.append("type", tipo);
+      if (genero) params.append("genre", genero);
+      params.append("limit", "100");   // para la demo, traemos bastantes
+
+      try {
+        const obras = await apiFetch("/works?" + params.toString());
+        pintarCatalogo(obras);
+      } catch (e) {
+        cont.innerHTML = "";
+        mostrarMensaje(e.message, "error");
+      }
+    }
+
+    // Dibuja las tarjetas del catálogo.
+    function pintarCatalogo(obras) {
+      const cont = document.getElementById("catalogo");
+      cont.innerHTML = "";
+      if (!obras.length) {
+        cont.innerHTML = '<p class="vacio">No hay obras que coincidan con el filtro.</p>';
+        return;
+      }
+      for (const obra of obras) {
+        cont.appendChild(crearTarjetaObra(obra, false));
+      }
+    }
+
+    // Crea la tarjeta de una obra. enModoFavoritos cambia ligeramente los botones.
+    function crearTarjetaObra(obra, enModoFavoritos) {
+      const div = document.createElement("div");
+      div.className = "obra";
+
+      const anio = obra.release_year ? obra.release_year : "—";
+      div.innerHTML = `
+        <div class="titulo">${escapar(obra.title)}</div>
+        <div class="meta">
+          <span class="etiqueta">${TIPOS[obra.type] || obra.type}</span>
+          <span class="etiqueta">${GENEROS[obra.genre] || obra.genre}</span>
+        </div>
+        <div class="meta">Año: ${anio}</div>
+      `;
+
+      const acciones = document.createElement("div");
+      acciones.className = "acciones";
+
+      // Botón para ver/crear reseñas de esta obra.
+      const btnResenas = document.createElement("button");
+      btnResenas.className = "pequeno";
+      btnResenas.textContent = "Ver reseñas";
+      btnResenas.onclick = (ev) => { ev.stopPropagation(); abrirDetalle(obra); };
+      acciones.appendChild(btnResenas);
+
+      // Botón de favoritos (en el catálogo: añadir; en la lista: nada extra).
+      if (!enModoFavoritos) {
+        const btnFav = document.createElement("button");
+        btnFav.className = "secundario pequeno";
+        btnFav.textContent = "★ Favorito";
+        btnFav.onclick = (ev) => { ev.stopPropagation(); anadirFavorito(obra.id); };
+        acciones.appendChild(btnFav);
+      }
+
+      div.appendChild(acciones);
+      // Clic en la tarjeta (fuera de los botones) también abre las reseñas.
+      div.onclick = () => abrirDetalle(obra);
+      return div;
+    }
+
+    /* ========================================================================
+       RESEÑAS
+       ======================================================================== */
+
+    // Abre el panel de detalle de una obra y carga sus reseñas.
+    async function abrirDetalle(obra) {
+      obraSeleccionada = obra;
+      document.getElementById("detalle-titulo").textContent = "Reseñas de: " + obra.title;
+      document.getElementById("seccion-detalle").classList.remove("oculto");
+      document.getElementById("form-resena").reset();
+      // Llevamos la vista hasta el panel de detalle.
+      document.getElementById("seccion-detalle").scrollIntoView({ behavior: "smooth" });
+      await cargarResenas(obra.id);
+    }
+
+    // GET /works/{id}/reviews
+    async function cargarResenas(workId) {
+      const cont = document.getElementById("lista-resenas");
+      cont.innerHTML = '<p class="cargando">Cargando reseñas…</p>';
+      try {
+        const resenas = await apiFetch(`/works/${workId}/reviews`);
+        cont.innerHTML = "";
+        if (!resenas.length) {
+          cont.innerHTML = '<p class="vacio">Aún no hay reseñas. ¡Sé el primero!</p>';
+          return;
+        }
+        for (const r of resenas) {
+          const div = document.createElement("div");
+          div.className = "resena";
+          div.innerHTML = `
+            <div class="estrellas">${estrellas(r.rating)}</div>
+            <div>${escapar(r.text)}</div>
+            <div class="autor">Usuario #${r.user_id}</div>
+          `;
+          cont.appendChild(div);
+        }
+      } catch (e) {
+        cont.innerHTML = "";
+        mostrarMensaje(e.message, "error");
+      }
+    }
+
+    // POST /works/{id}/reviews  — crear una reseña.
+    async function crearResena(rating, texto) {
+      try {
+        await apiFetch(`/works/${obraSeleccionada.id}/reviews`, {
+          method: "POST",
+          body: { rating: rating, text: texto },   // apiFetch lo convierte a JSON
+        });
+        mostrarMensaje("Reseña publicada correctamente.", "exito");
+        document.getElementById("form-resena").reset();
+        await cargarResenas(obraSeleccionada.id);   // refrescamos la lista
+      } catch (e) {
+        // El mensaje ya viene traducido por traducirError() (usa el "detail" de
+        // la API). Elegimos el color según el CÓDIGO de estado:
+        //   409 = ya reseñaste esta obra -> aviso amable (no es un fallo grave).
+        //   403/404/422/401 y demás -> error.
+        const tipo = e.status === 409 ? "aviso" : "error";
+        mostrarMensaje(e.message, tipo);
+      }
+    }
+
+    /* ========================================================================
+       FAVORITOS / LISTA DE LECTURA
+       ======================================================================== */
+
+    // POST /me/reading-list/{id}
+    async function anadirFavorito(workId) {
+      try {
+        const resp = await apiFetch(`/me/reading-list/${workId}`, { method: "POST" });
+        // La API devuelve un {detail: "..."} indicando si se añadió o ya estaba.
+        const texto = resp && resp.detail ? resp.detail : "Añadida a tu lista.";
+        mostrarMensaje(texto, "exito");
+      } catch (e) {
+        mostrarMensaje(e.message, "error");
+      }
+    }
+
+    // GET /me/reading-list
+    async function cargarFavoritos() {
+      const cont = document.getElementById("favoritos");
+      document.getElementById("seccion-favoritos").classList.remove("oculto");
+      document.getElementById("seccion-favoritos").scrollIntoView({ behavior: "smooth" });
+      cont.innerHTML = '<p class="cargando">Cargando tu lista…</p>';
+      try {
+        const obras = await apiFetch("/me/reading-list");
+        cont.innerHTML = "";
+        if (!obras.length) {
+          cont.innerHTML = '<p class="vacio">Tu lista está vacía. Añade obras con el botón ★ Favorito.</p>';
+          return;
+        }
+        for (const obra of obras) {
+          cont.appendChild(crearTarjetaObra(obra, true));
+        }
+      } catch (e) {
+        cont.innerHTML = "";
+        mostrarMensaje(e.message, "error");
+      }
+    }
+
+    /* ========================================================================
+       CREAR OBRA (solo admin) — POST /works
+       ======================================================================== */
+    async function crearObra(datos) {
+      try {
+        await apiFetch("/works", { method: "POST", body: datos });
+        mostrarMensaje("Obra creada correctamente.", "exito");
+        document.getElementById("form-obra").reset();
+        await cargarCatalogo();   // refrescamos el catálogo con la nueva obra
+      } catch (e) {
+        mostrarMensaje(e.message, "error");
+      }
+    }
+
+    /* ========================================================================
+       SEGURIDAD: escapar texto antes de inyectarlo en el HTML
+       ------------------------------------------------------------------------
+       Como pintamos texto que viene de la API (títulos, reseñas) dentro de
+       innerHTML, lo escapamos para evitar que se interprete como HTML.
+       ======================================================================== */
+    function escapar(texto) {
+      const div = document.createElement("div");
+      div.textContent = texto == null ? "" : String(texto);
+      return div.innerHTML;
+    }
+
+    /* ========================================================================
+       ENLACE DE EVENTOS (al cargar la página)
+       ======================================================================== */
+    document.addEventListener("DOMContentLoaded", () => {
+      // Rellenamos los desplegables de filtros y del formulario de obra.
+      llenarSelect("filtro-tipo", TIPOS, true);
+      llenarSelect("filtro-genero", GENEROS, true);
+      llenarSelect("obra-tipo", TIPOS, false);
+      llenarSelect("obra-genero", GENEROS, false);
+
+      // --- Login ---
+      document.getElementById("form-login").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const btn = document.getElementById("btn-login");
+        const usuario = document.getElementById("login-usuario").value.trim();
+        const contrasena = document.getElementById("login-password").value;
+
+        btn.disabled = true;
+        btn.textContent = "Entrando…";
+        limpiarMensaje();
+        try {
+          await iniciarSesion(usuario, contrasena);   // obtiene y guarda el token
+          await cargarPerfil();                        // GET /auth/me
+          mostrarApp();                                // pasa a la vista principal
+          mostrarMensaje(`Bienvenido/a, ${usuarioActual.username}.`, "exito");
+        } catch (e) {
+          mostrarMensaje(e.message, "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Entrar";
+        }
+      });
+
+      // --- Cerrar sesión ---
+      document.getElementById("btn-logout").addEventListener("click", cerrarSesion);
+
+      // --- Filtros del catálogo ---
+      document.getElementById("btn-filtrar").addEventListener("click", cargarCatalogo);
+
+      // --- Detalle de reseñas ---
+      document.getElementById("btn-cerrar-detalle").addEventListener("click", () => {
+        document.getElementById("seccion-detalle").classList.add("oculto");
+      });
+      document.getElementById("form-resena").addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const rating = parseInt(document.getElementById("resena-rating").value, 10);
+        const texto = document.getElementById("resena-texto").value.trim();
+        crearResena(rating, texto);
+      });
+
+      // --- Favoritos ---
+      document.getElementById("btn-ver-favoritos").addEventListener("click", cargarFavoritos);
+      document.getElementById("btn-cerrar-favoritos").addEventListener("click", () => {
+        document.getElementById("seccion-favoritos").classList.add("oculto");
+      });
+
+      // --- Crear obra (admin) ---
+      document.getElementById("form-obra").addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const anioTexto = document.getElementById("obra-anio").value;
+        const descTexto = document.getElementById("obra-desc").value.trim();
+        // Armamos el objeto solo con los campos que tienen valor. Los opcionales
+        // (año y descripción) se omiten si están vacíos, para no mandar null.
+        const datos = {
+          title: document.getElementById("obra-titulo").value.trim(),
+          type: document.getElementById("obra-tipo").value,
+          genre: document.getElementById("obra-genero").value,
+        };
+        if (anioTexto) datos.release_year = parseInt(anioTexto, 10);
+        if (descTexto) datos.description = descTexto;
+        crearObra(datos);
+      });
+    });
+  </script>
+</body>
+</html>
