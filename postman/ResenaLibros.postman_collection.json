@@ -1,0 +1,494 @@
+{
+  "info": {
+    "name": "ReseñaLibros API",
+    "description": "Colección para probar la API de reseñas de libros/películas. Flujo listo para el Collection Runner: register -> login (guarda token) -> crear obra (guarda work_id) -> crear reseña (guarda review_id) -> lista de lectura. La autorización Bearer {{token}} está a nivel de colección y la heredan los requests protegidos.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{token}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "POST Register (usuario normal)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nuevo@demo.com\",\n  \"username\": \"nuevo\",\n  \"password\": \"clave12345\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": [ "{{base_url}}" ],
+              "path": [ "auth", "register" ]
+            },
+            "description": "Crea un usuario normal. En un segundo pase devuelve 409 (ya existe); el test acepta ambos para poder re-ejecutar la colección."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// El registro es 201 la primera vez y 409 si se repite (usuario ya creado).",
+                  "pm.test(\"register 201 o 409\", () => pm.expect([201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Login (admin de la semilla)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "admin@demo.com", "type": "text" },
+                { "key": "password", "value": "admin12345", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [ "{{base_url}}" ],
+              "path": [ "auth", "login" ]
+            },
+            "description": "Inicia sesión como el ADMIN sembrado (db/seed.py), para que el flujo pueda crear/editar obras (requiere moderador o admin). Guarda el token automáticamente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"login 200\", () => pm.response.to.have.status(200));",
+                  "// Guarda el token en el entorno para que el resto de requests lo hereden.",
+                  "pm.environment.set(\"token\", pm.response.json().access_token);",
+                  "pm.test(\"devuelve access_token\", () => pm.expect(pm.response.json().access_token).to.be.a(\"string\").and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [ "{{base_url}}" ],
+              "path": [ "auth", "me" ]
+            },
+            "description": "Devuelve el perfil del usuario autenticado (usa el Bearer {{token}} heredado de la colección)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"me 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"no expone la contraseña\", () => pm.expect(pm.response.json()).to.not.have.property(\"hashed_password\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Works",
+      "item": [
+        {
+          "name": "GET Works (público, paginado)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/works?skip=0&limit=20",
+              "host": [ "{{base_url}}" ],
+              "path": [ "works" ],
+              "query": [
+                { "key": "skip", "value": "0" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"listar 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"devuelve un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Works (crear, admin/mod)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Dune\",\n  \"type\": \"book\",\n  \"genre\": \"science_fiction\",\n  \"description\": \"Clásico de ciencia ficción.\",\n  \"release_year\": 1965\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/works",
+              "host": [ "{{base_url}}" ],
+              "path": [ "works" ]
+            },
+            "description": "Crea una obra. Requiere rol moderador/admin (por eso el login usa el admin). Guarda el id en work_id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"crear 201\", () => pm.response.to.have.status(201));",
+                  "// Guarda el id de la obra para los siguientes requests.",
+                  "pm.environment.set(\"work_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Work by id",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/works/{{work_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "works", "{{work_id}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"ver obra 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT Work (actualizar parcial)",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"release_year\": 1966\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/works/{{work_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "works", "{{work_id}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"actualizar 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"conserva el título\", () => pm.expect(pm.response.json().title).to.eql(\"Dune\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE Work",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/works/{{work_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "works", "{{work_id}}" ]
+            },
+            "description": "Elimina la obra creada. En un pase completo del Runner, la siguiente carpeta (Reviews) vuelve a crear una obra en su pre-request, así que el flujo sigue funcionando."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"borrar 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Reviews",
+      "item": [
+        {
+          "name": "POST Review (crear)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"text\": \"Una obra maestra, me atrapó desde la primera página.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/works/{{work_id}}/reviews",
+              "host": [ "{{base_url}}" ],
+              "path": [ "works", "{{work_id}}", "reviews" ]
+            },
+            "description": "Crea una reseña sobre {{work_id}} y guarda review_id. El pre-request se asegura de que exista una obra (crea una nueva) para que el flujo funcione aunque la obra anterior se haya borrado."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AUTO-CURACIÓN DEL FLUJO: garantiza que exista una obra para reseñar.",
+                  "// Crea una obra nueva y guarda su id en work_id, para que un pase completo",
+                  "// del Runner funcione aunque 'DELETE Work' haya borrado la obra anterior.",
+                  "const crearObra = {",
+                  "  url: pm.environment.get(\"base_url\") + \"/works\",",
+                  "  method: \"POST\",",
+                  "  header: {",
+                  "    \"Content-Type\": \"application/json\",",
+                  "    \"Authorization\": \"Bearer \" + pm.environment.get(\"token\")",
+                  "  },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({ title: \"Obra para reseñar\", type: \"book\", genre: \"fiction\" })",
+                  "  }",
+                  "};",
+                  "pm.sendRequest(crearObra, (err, res) => {",
+                  "  if (!err && res.code === 201) {",
+                  "    pm.environment.set(\"work_id\", res.json().id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"crear reseña 201\", () => pm.response.to.have.status(201));",
+                  "// Guarda el id de la reseña para los siguientes requests.",
+                  "pm.environment.set(\"review_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Reviews de la obra (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/works/{{work_id}}/reviews",
+              "host": [ "{{base_url}}" ],
+              "path": [ "works", "{{work_id}}", "reviews" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"listar reseñas 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"devuelve un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Review by id (público)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reviews/{{review_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "reviews", "{{review_id}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"ver reseña 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT Review (editar, dueño/admin)",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"text\": \"Sigue siendo excelente tras releerla.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/reviews/{{review_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "reviews", "{{review_id}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"editar reseña 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"rating actualizado\", () => pm.expect(pm.response.json().rating).to.eql(4));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE Review (dueño/admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reviews/{{review_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "reviews", "{{review_id}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"borrar reseña 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Reading list",
+      "item": [
+        {
+          "name": "GET Mi lista",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/me/reading-list",
+              "host": [ "{{base_url}}" ],
+              "path": [ "me", "reading-list" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"ver lista 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"devuelve un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Añadir a mi lista",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/me/reading-list/{{work_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "me", "reading-list", "{{work_id}}" ]
+            },
+            "description": "Añade la obra {{work_id}} a la lista. 201 si se añadió, 200 si ya estaba (idempotente)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"añadir 201 o 200\", () => pm.expect([201, 200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE Quitar de mi lista",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/me/reading-list/{{work_id}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "me", "reading-list", "{{work_id}}" ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"quitar 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

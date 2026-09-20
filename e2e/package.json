@@ -1,0 +1,14 @@
+{
+  "name": "resenalibros-e2e",
+  "version": "1.0.0",
+  "description": "Pruebas E2E de la API ReseñaLibros con Playwright (API request context).",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
