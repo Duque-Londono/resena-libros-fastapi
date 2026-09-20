@@ -28,3 +28,8 @@ alembic==1.20.0               # Migraciones de esquema (vía oficial para crear/
 pyjwt==2.14.0                 # Crear y verificar tokens JWT
 pwdlib[argon2]==0.3.1         # Hash de contraseñas con Argon2 (backend argon2-cffi)
 python-multipart==0.0.32      # Necesario para el formulario de login (OAuth2 password flow)
+
+# --- Pruebas (Fase 7) ---
+pytest==9.1.1                 # Framework de pruebas
+pytest-cov==7.1.0             # Reporte de cobertura de código
+httpx==0.28.1                 # Cliente HTTP que usa el TestClient de FastAPI
