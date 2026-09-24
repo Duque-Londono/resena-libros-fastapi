@@ -19,12 +19,13 @@ código limpio, modular y fácil de sustentar.
 4. [Requisitos previos](#-requisitos-previos)
 5. [Instalación](#-instalación)
 6. [Ejecución](#-ejecución)
-7. [Credenciales de demo](#-credenciales-de-demo)
-8. [Documentación de endpoints](#-documentación-de-endpoints)
-9. [Modelo de datos](#-modelo-de-datos)
-10. [Pruebas](#-pruebas)
-11. [Notas de seguridad](#-notas-de-seguridad)
-12. [Licencia y autor](#-licencia-y-autor)
+7. [Puesta en marcha en una máquina nueva (sustentación)](#-puesta-en-marcha-en-una-máquina-nueva-sustentación)
+8. [Credenciales de demo](#-credenciales-de-demo)
+9. [Documentación de endpoints](#-documentación-de-endpoints)
+10. [Modelo de datos](#-modelo-de-datos)
+11. [Pruebas](#-pruebas)
+12. [Notas de seguridad](#-notas-de-seguridad)
+13. [Licencia y autor](#-licencia-y-autor)
 
 ---
 
@@ -137,6 +138,82 @@ uvicorn app.main:app --reload
 
 En Swagger, usa el botón **Authorize** para pegar el token del login y probar los
 endpoints protegidos.
+
+---
+
+## 🖥️ Puesta en marcha en una máquina nueva (sustentación)
+
+Guía completa para dejar el proyecto **funcionando desde cero** en un equipo que
+no lo tiene instalado (por ejemplo, el computador de la sustentación). Copia y
+pega los comandos en orden.
+
+> **Requisito clave:** el equipo debe tener **Python 3.14** (las dependencias
+> están fijadas a versiones probadas en esa versión). Verifícalo con:
+> ```bash
+> python3 --version   # debe decir Python 3.14.x
+> ```
+
+### Paso 1 — Obtener el proyecto
+```bash
+git clone https://github.com/Duque-Londono/resena-libros-fastapi.git
+cd resena-libros-fastapi
+```
+> Si llevas el proyecto en USB en lugar de clonarlo, copia la carpeta al equipo
+> y entra en ella con `cd`. **No copies** las carpetas `.venv/`, `*.db` ni
+> `node_modules/`: se regeneran con los pasos siguientes.
+
+### Paso 2 — Entorno virtual e instalar dependencias
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # En Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Paso 3 — Crear el archivo de configuración `.env`
+El proyecto lee su configuración desde un archivo `.env` que **no viene incluido**
+(contiene secretos y está en `.gitignore`). Se crea a partir de la plantilla:
+```bash
+cp .env.example .env               # En Windows (PowerShell): copy .env.example .env
+```
+
+### Paso 4 — Generar la `SECRET_KEY`
+La `SECRET_KEY` es la clave con la que se firman los tokens de login (JWT). **No
+se saca de ningún sitio: la generas tú**, y debe ser una cadena larga y aleatoria.
+Genérala con este comando (usa la librería `secrets` de Python):
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+Copia la cadena que imprime (algo como `9f2c...` de 64 caracteres) y pégala en el
+archivo `.env`, reemplazando el valor de ejemplo:
+```env
+SECRET_KEY=9f2c8e...aquí-va-la-cadena-que-generaste...b41a
+```
+> Cualquier cadena larga y secreta sirve; lo importante es que **no sea la de
+> ejemplo** y que no se comparta. Si la cambias, los tokens emitidos antes dejan
+> de ser válidos (basta con volver a hacer login).
+
+### Paso 5 — Crear las tablas (migraciones)
+```bash
+alembic upgrade head
+```
+
+### Paso 6 — Sembrar datos de demo
+Crea el usuario administrador, un usuario normal y 5 obras de ejemplo:
+```bash
+python -m app.db.seed
+```
+
+### Paso 7 — Arrancar la API
+```bash
+uvicorn app.main:app --reload
+```
+Abre en el navegador **http://127.0.0.1:8000/docs** y usa las
+[credenciales de demo](#-credenciales-de-demo) para iniciar sesión.
+
+### (Opcional) Verificar que todo quedó bien
+```bash
+pytest                # deben pasar los 53 tests
+```
 
 ---
 
