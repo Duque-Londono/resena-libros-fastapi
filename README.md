@@ -23,9 +23,10 @@ código limpio, modular y fácil de sustentar.
 8. [Credenciales de demo](#-credenciales-de-demo)
 9. [Documentación de endpoints](#-documentación-de-endpoints)
 10. [Modelo de datos](#-modelo-de-datos)
-11. [Pruebas](#-pruebas)
-12. [Notas de seguridad](#-notas-de-seguridad)
-13. [Licencia y autor](#-licencia-y-autor)
+11. [Cómo extender el proyecto](#-cómo-extender-el-proyecto)
+12. [Pruebas](#-pruebas)
+13. [Notas de seguridad](#-notas-de-seguridad)
+14. [Licencia y autor](#-licencia-y-autor)
 
 ---
 
@@ -280,6 +281,94 @@ User ─N──(reading_list)──N─ Work
 
 Enums centralizados: `Role` (user/moderator/admin), `WorkType` (book/movie),
 `Genre` (fiction, fantasy, science_fiction, …). Se guardan por **valor** en la BD.
+
+---
+
+## 🧩 Cómo extender el proyecto
+
+El proyecto está en **capas**, así que cualquier cambio "baja en cascada" y cada
+concepto vive en **un solo lugar**. El orden de las capas es siempre el mismo:
+
+```
+models/  →  Alembic  →  crud/  →  schemas/  →  routers/  →  db/seed.py  →  tests/
+(el dato)  (la BD)     (SQL)    (validación)  (HTTP)       (ejemplos)     (verificar)
+```
+
+> ⚠️ **La migración de Alembic nunca se salta.** En SQLite de desarrollo puede
+> parecer que funciona sin ella, pero la BD real (o PostgreSQL) no tendrá la
+> columna/tabla y fallará.
+
+### A) Expandir el modelo — agregar un campo a una tabla
+
+Ejemplo: añadir `spoiler: bool` a las reseñas.
+
+1. **Modelo** (`app/models/review.py`): añade la columna con `default` y
+   `nullable` (ya hay filas existentes que rellenar):
+   ```python
+   spoiler: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+   ```
+2. **Migración** (obligatoria):
+   ```bash
+   alembic revision --autogenerate -m "agregar campo spoiler a reviews"
+   alembic upgrade head   # revisa el archivo generado antes de aplicarlo
+   ```
+3. **Schemas** (`app/schemas/review.py`): decide en cuáles entra según el contrato
+   — `Create` (qué acepto), `Update` (qué dejo cambiar), `Read` (qué muestro).
+4. **CRUD** (`app/crud/review.py`): en `create` agrega el campo al construir el
+   objeto. `update` **no se toca** (usa `model_dump(exclude_unset=True)`).
+5. **Routers**: normalmente **no se tocan** (ya reciben/devuelven esos schemas).
+6. **Tests**: añade uno que verifique que se guarda y se devuelve.
+
+### B) Expandir el modelo — agregar una entidad (tabla nueva)
+
+Ejemplo: comentarios a las reseñas (`Comment`). Replica la estructura de `Review`:
+
+| Paso | Archivo | Qué haces |
+|---|---|---|
+| 1 | `app/models/comment.py` | Clase `Comment(Base)` con columnas, FKs y `relationship`. |
+| 2 | modelo relacionado | `relationship(back_populates=...)` recíproco en `Review`/`User`. |
+| 3 | `app/db/base.py` | **Importar** el modelo (Alembic solo ve lo importado aquí). |
+| 4 | Alembic | `alembic revision --autogenerate -m "tabla comments"` → `upgrade head`. |
+| 5 | `app/schemas/comment.py` | `CommentCreate`, `CommentUpdate`, `CommentRead`. |
+| 6 | `app/crud/comment.py` | `get_by_id`, `get_list_*`, `create`, `update`, `delete`. |
+| 7 | `app/routers/comments.py` | Endpoints + reglas (auth, propiedad). |
+| 8 | `app/main.py` | `app.include_router(comments.router)`. |
+| 9 | `tests/test_comments.py` | Cobertura del nuevo flujo. |
+
+### C) Agregar un rol nuevo
+
+Ejemplo: un rol `EDITOR` entre `MODERATOR` y `ADMIN`.
+
+1. **Definirlo** (`app/models/enums.py`, fuente de verdad):
+   ```python
+   class Role(str, Enum):
+       USER = "user"
+       MODERATOR = "moderator"
+       EDITOR = "editor"      # nuevo
+       ADMIN = "admin"
+   ```
+2. **Ubicarlo en la jerarquía** (`app/core/dependencies.py`, único lugar de niveles):
+   ```python
+   NIVEL_ROL = {Role.USER: 1, Role.MODERATOR: 2, Role.EDITOR: 3, Role.ADMIN: 4}
+   require_editor = require_min_role(Role.EDITOR)   # dependencia lista para usar
+   ```
+3. **Migración** (el rol es un `Enum` en la BD, `name="role_enum"`):
+   ```bash
+   alembic revision --autogenerate -m "agregar rol editor"
+   alembic upgrade head
+   ```
+4. **Aplicar el permiso** donde toque: en un router, `Depends(require_editor)`, o
+   ajustar la regla de propiedad en `app/routers/reviews.py`.
+5. **(Opcional)** sembrar un usuario con ese rol en `app/db/seed.py`.
+6. **Tests**: un `EDITOR` puede X; un `USER` recibe 403.
+
+### D) Agregar un usuario nuevo
+
+- **Vía API (lo normal):** `POST /auth/register` crea un usuario con rol `user`.
+- **Por semilla / con otro rol:** en `app/db/seed.py` se reutiliza
+  `crud_user.create_user(db, user_in, role=Role.ADMIN)` — así se crean el admin y
+  el usuario de demo. El parámetro `role` permite sembrar cualquier rol; la
+  contraseña se hashea automáticamente (nunca se guarda en texto plano).
 
 ---
 
